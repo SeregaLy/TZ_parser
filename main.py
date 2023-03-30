@@ -1,33 +1,39 @@
-import asyncio
-import os
 import aiohttp
+import asyncio
+import hashlib
+import os
 
-
-async def download_file(url, temp_dir):
+async def download_repo_contents():
+    url = 'https://gitea.radium.group/radium/project-configuration'
     async with aiohttp.ClientSession() as session:
-        async with session.head(url) as resp:
-            content_type = resp.headers.get('content-type')
-            content_length = int(resp.headers.get('content-length', 0))
-            file_name = f'{os.path.basename(url)}-{content_length}.{content_type.split("/")[1]}'
-            file_path = os.path.join(temp_dir, file_name)
-            async with session.get(url) as resp:
-                with open(file_path, 'wb') as f:
-                    while True:
-                        chunk = await resp.content.read(1024)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-
-
-async def download_repository():
-    repository_url = 'https://gitea.radium.group/radium/project-configuration'
-    temp_dir = '/tmp'
+        async with session.get(f'{url}/src/ref/heads/master/') as response:
+            files = await response.text()
+    return files
+async def download_files():
+    files = []
     tasks = []
     for i in range(3):
-        task = asyncio.create_task(download_file(repository_url, temp_dir))
+        task = asyncio.create_task(download_repo_contents())
         tasks.append(task)
-    await asyncio.gather(*tasks)
-
-
-if __name__ == '__main__':
-    asyncio.run(download_repository())
+    for result in asyncio.as_completed(tasks):
+        files += await result
+    return files
+async def main():
+    files = await download_files()
+    for file in files:
+        filepath = os.path.join('temp_folder', file)
+        with open(filepath, 'wb') as f:
+            f.write(file.content)
+    return files
+async def hash_files():
+    files = await main()
+    results = []
+    for file in files:
+        filepath = os.path.join('temp_folder', file)
+        with open(filepath, 'rb') as f:
+            contents = f.read()
+        hasher = hashlib.sha256()
+        hasher.update(contents)
+        result = hasher.hexdigest()
+        results.append(result)
+    return results
